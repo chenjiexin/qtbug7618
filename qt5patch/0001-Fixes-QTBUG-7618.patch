@@ -1,0 +1,29 @@
+From e3b7f940a440cafce2c903d2678700e900745839 Mon Sep 17 00:00:00 2001
+From: Daniel Thor Kristjansson <danielk@cuymedia.net>
+Date: Wed, 20 Jun 2012 14:38:26 -0400
+Subject: [PATCH] Fixes QTBUG-7618.
+
+GTimerSource has 1ms accuracy, QTimerInfoList::timerWait() has 1us accuracy.
+So when there is less than 1 ms left on the timer we enter a tight loop
+checking for timer expiration since we don't round up the timerWait()
+timer to the nearest millisecond.
+---
+ src/corelib/kernel/qeventdispatcher_glib.cpp |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/corelib/kernel/qeventdispatcher_glib.cpp b/src/corelib/kernel/qeventdispatcher_glib.cpp
+index 4429679..3f75c4e 100644
+--- a/src/corelib/kernel/qeventdispatcher_glib.cpp
++++ b/src/corelib/kernel/qeventdispatcher_glib.cpp
+@@ -133,7 +133,7 @@ static gboolean timerSourcePrepareHelper(GTimerSource *src, gint *timeout)
+ {
+     timeval tv = { 0l, 0l };
+     if (!(src->processEventsFlags & QEventLoop::X11ExcludeTimers) && src->timerList.timerWait(tv))
+-        *timeout = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
++        *timeout = (tv.tv_sec * 1000) + ((tv.tv_usec + 999) / 1000);
+     else
+         *timeout = -1;
+ 
+-- 
+1.7.9.5
+

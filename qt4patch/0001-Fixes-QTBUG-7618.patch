@@ -1,0 +1,46 @@
+From 3148d0e16891cbdb6ee71534e32afda716a2496b Mon Sep 17 00:00:00 2001
+From: Daniel Thor Kristjansson <danielk@cuymedia.net>
+Date: Wed, 20 Jun 2012 14:36:10 -0400
+Subject: [PATCH] Fixes QTBUG-7618.
+
+GTimerSource has 1ms accuracy, QTimerInfoList::timerWait() has 1us accuracy.
+So when there is less than 1 ms left on the timer we enter a tight loop
+checking for timer expiration since we don't round up the timerWait()
+timer to the nearest millisecond.
+---
+ src/corelib/kernel/qeventdispatcher_glib.cpp |    2 +-
+ src/corelib/kernel/qeventdispatcher_unix.cpp |    5 +++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/corelib/kernel/qeventdispatcher_glib.cpp b/src/corelib/kernel/qeventdispatcher_glib.cpp
+index 1a6e46b..3e7b240 100644
+--- a/src/corelib/kernel/qeventdispatcher_glib.cpp
++++ b/src/corelib/kernel/qeventdispatcher_glib.cpp
+@@ -134,7 +134,7 @@ static gboolean timerSourcePrepareHelper(GTimerSource *src, gint *timeout)
+ {
+     timeval tv = { 0l, 0l };
+     if (!(src->processEventsFlags & QEventLoop::X11ExcludeTimers) && src->timerList.timerWait(tv))
+-        *timeout = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
++        *timeout = (tv.tv_sec * 1000) + ((tv.tv_usec + 999) / 1000);
+     else
+         *timeout = -1;
+ 
+diff --git a/src/corelib/kernel/qeventdispatcher_unix.cpp b/src/corelib/kernel/qeventdispatcher_unix.cpp
+index e1f4ee6..6fbae71 100644
+--- a/src/corelib/kernel/qeventdispatcher_unix.cpp
++++ b/src/corelib/kernel/qeventdispatcher_unix.cpp
+@@ -465,6 +465,11 @@ bool QTimerInfoList::timerWait(timeval &tm)
+     if (currentTime < t->timeout) {
+         // time to wait
+         tm = t->timeout - currentTime;
++        // wait at least 1 millisecond, see bug QT-7618
++        // Since we use select() and not pselect() to wait anything less
++        // than 1 millisecond results in a CPU consuming busy wait loop
++        if ((0 == tm.tv_sec) && tm.tv_usec < 1000)
++            tm.tv_usec = 1000;
+     } else {
+         // no time to wait
+         tm.tv_sec  = 0;
+-- 
+1.7.9.5
+
